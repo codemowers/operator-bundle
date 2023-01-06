@@ -1,0 +1,123 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: postgresdatabases.codemowers.io
+spec:
+  group: codemowers.io
+  names:
+    kind: PostgresDatabase
+    plural: postgresdatabases
+    singular: postgresdatabase
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    - jsonPath: .status.creation.state
+      name: Ready
+      type: string
+    - jsonPath: .spec.capacity
+      name: Capacity
+      type: string
+    - jsonPath: .spec.class
+      name: Class
+      type: string
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        properties:
+          spec:
+            properties:
+              capacity:
+                pattern: ^[1-9][0-9]*[PTGMK]i?$
+                type: string
+              class:
+                type: string
+            required:
+            - capacity
+            - class
+            type: object
+          status:
+            type: object
+            x-kubernetes-preserve-unknown-fields: true
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: clusterpostgresdatabaseclasses.codemowers.io
+spec:
+  conversion:
+    strategy: None
+  group: codemowers.io
+  names:
+    kind: ClusterPostgresDatabaseClass
+    plural: clusterpostgresdatabaseclasses
+    singular: clusterpostgresdatabaseclass
+  scope: Cluster
+  versions:
+  - additionalPrinterColumns:
+    - description: Description
+      jsonPath: .spec.description
+      name: Description
+      type: string
+    - description: Target namespace
+      jsonPath: .spec.targetNamespace
+      name: Target namespace
+      type: string
+    - description: Target cluster
+      jsonPath: .spec.targetCluster
+      name: Target cluster
+      type: string
+    - description: Storage class
+      jsonPath: .spec.storageClass
+      name: Storage class
+      type: string
+    - description: Image
+      jsonPath: .spec.podSpec.containers[0].image
+      name: Image
+      type: string
+    - description: Age
+      jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        properties:
+          spec:
+            properties:
+              customResourceSpec:
+                type: object
+                x-kubernetes-preserve-unknown-fields: true
+              description:
+                type: string
+              image:
+                type: string
+              podSpec:
+                type: object
+                x-kubernetes-preserve-unknown-fields: true
+              replicas:
+                type: integer
+              storageClass:
+                type: string
+              targetCluster:
+                type: string
+              targetNamespace:
+                type: string
+              topologyKey:
+                type: string
+            required:
+            - description
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true

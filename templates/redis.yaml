@@ -1,0 +1,75 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: redis-operator
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: redis-operator
+rules:
+  - apiGroups:
+      - zalando.org
+    resources:
+      - clusterkopfpeerings
+    verbs:
+      - get
+      - list
+      - watch
+      - patch
+  - apiGroups:
+      - codemowers.io
+    resources:
+      - clusterredisclasses
+      - redises
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - secrets
+    verbs:
+      - create
+  - apiGroups:
+      - apps
+    resources:
+      - statefulsets
+    verbs:
+      - create
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: redis-operator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+- kind: ServiceAccount
+  name: redis-operator
+  namespace: operator-bundle
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis-operator
+spec:
+  revisionHistoryLimit: 0
+  replicas: 1
+  selector:
+    matchLabels: &selector
+      app: redis-operator
+  template:
+    metadata:
+      labels: *selector
+    spec:
+      serviceAccountName: redis-operator
+      containers:
+        - name: redis-operator
+          image: harbor.k-space.ee/k-space/operator-bundle
+          command:
+            - /app/redis.py
