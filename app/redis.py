@@ -11,6 +11,33 @@ from lib import Secret, make_selector, parse_capacity
 REDIS_PORT = 6379
 
 
+@kopf.on.delete("redises.codemowers.io")
+async def deletion(name, namespace, body, **kwargs):
+    api_client = client.ApiClient()
+    apps_api = client.AppsV1Api()
+    api_instance = client.CustomObjectsApi(api_client)
+    v1 = client.CoreV1Api(api_client)
+    class_body = await api_instance.get_cluster_custom_object(
+        "codemowers.io",
+        "v1alpha1",
+        "clusterredisclasses",
+        body["spec"]["class"])
+    target_namespace = class_body["spec"].get("targetNamespace", namespace)
+    instance = name
+    if "targetNamespace" in class_body["spec"]:
+        instance = "%s-%s" % (namespace, instance)
+    service_name = "redis-cluster-%s" % instance
+    headless_name = "%s-headless" % service_name
+    await v1.delete_namespaced_service(service_name, target_namespace)
+    await v1.delete_namespaced_service(headless_name, target_namespace)
+    await apps_api.delete_namespaced_stateful_set(
+        "redis-cluster-%s" % instance,
+        target_namespace)
+    await v1.delete_namespaced_secret(
+        "redis-cluster-%s-secrets" % instance,
+        target_namespace)
+
+
 @kopf.on.resume("redises.codemowers.io")
 @kopf.on.create("redises.codemowers.io")
 async def creation(name, namespace, body, **kwargs):
@@ -40,6 +67,7 @@ async def creation(name, namespace, body, **kwargs):
     # Service hostname and FQDN
     service_name = "redis-cluster-%s" % instance
     service_fqdn = "%s.%s.svc.cluster.local" % (service_name, target_namespace)
+    headless_name = "%s-headless" % service_name
 
     # Derive owner object for Kopf
     owner = body if target_namespace == namespace else class_body
@@ -130,7 +158,7 @@ async def creation(name, namespace, body, **kwargs):
         container_spec["args"] = container_spec.get("args", []) + args
         container_spec["env"] = [{
             "name": "SERVICE_NAME",
-            "value": service_name,
+            "value": headless_name,
         }, {
             "name": "REPLICAS",
             "value": " ".join([("redis-cluster-%s-%d" % (instance, j)) for j in range(0, replicas)])
@@ -153,7 +181,7 @@ async def creation(name, namespace, body, **kwargs):
                 "selector": {
                     "matchLabels": labels,
                 },
-                "serviceName": service_name,
+                "serviceName": headless_name,
                 "replicas": replicas,
                 "podManagementPolicy": "Parallel",
                 "template": {
@@ -224,7 +252,7 @@ async def creation(name, namespace, body, **kwargs):
             "apiVersion": "v1",
             "metadata": {
                 "namespace": target_namespace,
-                "name": "%s-headless" % service_name,
+                "name": headless_name,
             },
             "spec": {
                 "selector": labels,
