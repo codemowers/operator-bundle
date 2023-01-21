@@ -56,6 +56,11 @@ async def creation(name, namespace, body, **kwargs):
                 "labels": labels,
             },
             "spec": {
+                "proxy": {
+                  "pgBouncer": {
+                    "replicas": 2
+                  }
+                },
                 "users": [{
                     "name": "postgres",
                 }],
@@ -113,7 +118,7 @@ async def creation(name, namespace, body, **kwargs):
         "postgres-%s-pguser-postgres" % instance,
         target_namespace)
     cluster_port = int(b64decode(cluster_secrets.data["port"]).decode("ascii"))
-    cluster_hostname = b64decode(cluster_secrets.data["host"]).decode("ascii")
+    cluster_hostname = b64decode(cluster_secrets.data["pgbouncer-host"]).decode("ascii")
 
     conn = await aiopg.connect(
         database="postgres",
