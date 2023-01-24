@@ -298,12 +298,6 @@ async def creation(name, namespace, body, **kwargs):
         "value": "http://%s:%%(plaintext)s@%s" % (access_key, service_fqdn),
     }])
 
-    # Add user and set the owner read-write policy for the bucket
-    logging.info("Creating user %s" % access_key)
-    admin.user_add(access_key, bucket_secrets["plaintext"])
-    admin.policy_add("owner", "minio-owner.json")
-    admin.policy_set("owner", user=access_key)
-
     kopf.append_owner_reference(body, owner, block_owner_deletion=False)
     try:
         await v1.create_namespaced_secret(namespace, client.V1Secret(**body))
@@ -314,6 +308,18 @@ async def creation(name, namespace, body, **kwargs):
             raise
     else:
         logging.info("Created secret %s/%s" % (namespace, bucket_secrets.name))
+
+    # Read secret again in case last run was interrupted
+    secrets = await v1.read_namespaced_secret(bucket_secrets.name, namespace)
+    access_key = b64decode(secrets.data["AWS_ACCESS_KEY_ID"]).decode("ascii")
+    secret_key = b64decode(secrets.data["AWS_SECRET_ACCESS_KEY"]).decode("ascii")
+
+    # Add user and set the owner read-write policy for the bucket
+    logging.info("Creating user %s" % access_key)
+    admin.user_add(access_key, secret_key)
+    admin.policy_add("owner", "minio-owner.json")
+    admin.policy_set("owner", user=access_key)
+
     return {"state": "READY"}
 
 
