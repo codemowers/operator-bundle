@@ -1,0 +1,75 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: mysql-database-operator
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: mysql-database-operator
+rules:
+  - apiGroups:
+      - zalando.org
+    resources:
+      - clusterkopfpeerings
+    verbs:
+      - get
+      - list
+      - watch
+      - patch
+  - apiGroups:
+      - codemowers.io
+    resources:
+      - clustermysqldatabaseclasses
+      - mysqldatabases
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - secrets
+    verbs:
+      - create
+  - apiGroups:
+      - apps
+    resources:
+      - statefulsets
+    verbs:
+      - create
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: mysql-database-operator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+- kind: ServiceAccount
+  name: mysql-database-operator
+  namespace: operator-bundle
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql-database-operator
+spec:
+  revisionHistoryLimit: 0
+  replicas: 1
+  selector:
+    matchLabels: &selector
+      app: mysql-operator
+  template:
+    metadata:
+      labels: *selector
+    spec:
+      serviceAccountName: mysql-database-operator
+      containers:
+        - name: mysql-database-operator
+          image: harbor.k-space.ee/k-space/operator-bundle
+          command:
+            - /app/mysql.py

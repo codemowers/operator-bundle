@@ -1,6 +1,7 @@
 import string
 import random
 from base64 import b64encode
+from kubernetes_asyncio import client
 from passlib.context import CryptContext
 
 bcrypt_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -89,3 +90,33 @@ assert s["namespace"] == "foo"
 assert s["name"] == "bar"
 assert len(s["plaintext"]) == 32
 assert len(s["bcrypt"]) == 60
+
+
+def make_resolver(plural, version, fmt="%s"):
+    async def wrapped(namespace, name, body):
+        api_client = client.ApiClient()
+        api_instance = client.CustomObjectsApi(api_client)
+
+        class_body = await api_instance.get_cluster_custom_object(
+            "codemowers.io",
+            version,
+            plural,
+            body["spec"]["class"])
+
+        target_namespace = class_body["spec"].get("targetNamespace", namespace)
+        instance = class_body["spec"].get("targetCluster", name)
+
+        # TODO: Make sure origin namespace/name do not contain dashes,
+        # or find some other trick to prevent name collisions
+
+        dedicated_cluster = "targetCluster" in class_body["spec"]
+
+        # Prefix instance name with origin namespace if
+        # we're hoarding instances into single namespace
+        if "targetNamespace" in class_body["spec"] and not dedicated_cluster:
+            instance = "%s-%s" % (namespace, instance)
+
+        # Derive owner object for Kopf
+        owner = body if target_namespace == namespace else class_body
+        return target_namespace, fmt % instance, owner, api_client, api_instance, class_body["spec"]
+    return wrapped

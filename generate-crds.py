@@ -17,6 +17,11 @@ PROPS_PERSISTENT = (
   ("storageClass", { "type": "string" }),
 )
 
+PROPS_ROUTED = (
+  ("routers", {"type": "integer"}),
+  ("routerPodSpec", { "type": "object", "x-kubernetes-preserve-unknown-fields": True }),
+)
+
 PROPS_STATEFUL_SET = (
   ("secretSpec", { "type": "object", "x-kubernetes-preserve-unknown-fields": True }),
   ("podSpec", { "type": "object", "x-kubernetes-preserve-unknown-fields": True }),
@@ -33,8 +38,8 @@ PROPS_CUSTOM_RESOURCE = (
 )
 
 PROPS_MONGO = PROPS_COMMON + PROPS_SHAREABLE + PROPS_PERSISTENT + PROPS_CUSTOM_RESOURCE
-PROPS_POSTGRES = PROPS_COMMON + PROPS_SHAREABLE + PROPS_PERSISTENT + PROPS_CUSTOM_RESOURCE
-PROPS_MYSQL = PROPS_COMMON + PROPS_SHAREABLE + PROPS_PERSISTENT + PROPS_CUSTOM_RESOURCE
+PROPS_POSTGRES = PROPS_COMMON + PROPS_SHAREABLE + PROPS_PERSISTENT + PROPS_CUSTOM_RESOURCE + PROPS_ROUTED
+PROPS_MYSQL = PROPS_COMMON + PROPS_SHAREABLE + PROPS_PERSISTENT + PROPS_CUSTOM_RESOURCE + PROPS_ROUTED
 PROPS_REDIS = PROPS_COMMON + PROPS_PERSISTENT + PROPS_STATEFUL_SET
 PROPS_MINIO = PROPS_COMMON + PROPS_SHAREABLE + PROPS_PERSISTENT + PROPS_STATEFUL_SET + PROPS_INGRESS + \
     (("quotaType", { "type": "string", "enum": ["none", "fifo", "hard"]}),)
@@ -152,7 +157,7 @@ def create_versions(props, name="v1alpha1"):
     )
 
     printers = []
-    for field in ("description", "targetNamespace", "targetCluster", "storageClass", "ingressClass"):
+    for field in ("description", "targetNamespace", "targetCluster", "storageClass", "ingressClass", "replicas", "routers"):
         if field in props:
            printers.append({
               "description": sentence_case(field),
@@ -160,6 +165,7 @@ def create_versions(props, name="v1alpha1"):
               "name": sentence_case(field),
               "type": props[field]["type"],
            })
+
     if "podSpec" in props:
         printers.append({
             "description": "Image",
