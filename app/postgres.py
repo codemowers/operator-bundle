@@ -40,6 +40,8 @@ async def creation(name, namespace, body, **kwargs):
     owner = body if target_namespace == namespace else class_body
 
     capacity = body["spec"]["capacity"]
+    replicas = class_spec["replicas"]
+    routers = class_spec["routers"]
 
     labels, label_selector = make_selector("postgres", instance)
 
@@ -58,7 +60,7 @@ async def creation(name, namespace, body, **kwargs):
             "spec": {
                 "proxy": {
                   "pgBouncer": {
-                    "replicas": 2
+                    "replicas": routers
                   }
                 },
                 "users": [{
@@ -68,7 +70,7 @@ async def creation(name, namespace, body, **kwargs):
                 "instances": [{
                     **pod_spec,
                     "name": "cluster",
-                    "replicas": 3,
+                    "replicas": replicas,
                     "affinity": {
                         "podAntiAffinity": {
                             "requiredDuringSchedulingIgnoredDuringExecution": [{
@@ -89,11 +91,21 @@ async def creation(name, namespace, body, **kwargs):
                 }],
                 "backups": {
                     "pgbackrest": {
-                        "repos": []
+                        "repos": [{
+                            "name": "repo1",
+                            "volume": {
+                                "volumeClaimSpec": {
+                                    "accessModes": ["ReadWriteOnce"],
+                                    "resources": {
+                                        "requests": {
+                                            "storage": 2 * capacity
+                                        }
+                                    }
+                                }
+                            }
+                        }]
                     }
                 }
-            }
-        }
 
         kopf.append_owner_reference(body, owner, block_owner_deletion=False)
         try:
