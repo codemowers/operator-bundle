@@ -75,6 +75,10 @@ spec:
       jsonPath: .spec.storageClass
       name: Storage class
       type: string
+    - description: Replicas
+      jsonPath: .spec.replicas
+      name: Replicas
+      type: integer
     - description: Image
       jsonPath: .spec.podSpec.containers[0].image
       name: Image
