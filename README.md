@@ -56,10 +56,9 @@ spec:
 
 # Redis
 
-We actually instantiate KeyDB cluster as it better fits the Kubernetes world,
-you might want to distinguish `persistent` and `ephemeral`
-(without persistent storage) classes for Redis. Note that `capacity` ends up as
-`maxmemory` configuration for the KeyDB cluster:
+We actually instantiate KeyDB multi-master cluster as it better fits the
+Kubernetes world.
+Note that you might want to distinguish `persistent` and `ephemeral` classes for Redis:
 
 ```
 ---
@@ -68,6 +67,25 @@ kind: Redis
 metadata:
   name: example
 spec:
-  capacity: 1Gi
+  capacity: 512Mi
   class: ephemeral
+---
+apiVersion: codemowers.io/v1alpha1
+kind: Redis
+metadata:
+  name: example
+spec:
+  capacity: 512Mi
+  class: persistent
 ```
+
+Note that `capacity` ends up as `maxmemory` configuration for the KeyDB cluster,
+for persistent scenarios underlying persistent volume is allocated twice the amount
+to accommodate BGSAVE behaviour.
+
+In the persistent mode BGSAVE behaviour dumps the memory contents to disk
+at least once per hour up to once per minute if there are more than 10000 write operations.
+Note that AOF is not used in persistent mode so there is a chance to lose
+writes which happened between BGSAVE operations.
+
+You really should not use Redis as durable data storage.

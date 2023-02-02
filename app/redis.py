@@ -205,7 +205,9 @@ async def creation(name, namespace, body, **kwargs):
                     "accessModes": ["ReadWriteOnce"],
                     "resources": {
                         "requests": {
-                            "storage": capacity,
+                            # Double the capacity to accommodate BGSAVE and
+                            # represent in mebibytes
+                            "storage": "%dMi" % (parse_capacity(capacity) // 524288),
                         }
                     },
                     "storageClassName": class_body["spec"]["storageClass"],
