@@ -1,0 +1,19 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: mysql-clusters
+  name: mysql-cluster-shared-primary
+  annotations:
+    external-dns.alpha.kubernetes.io/hostname: mysql.codemowers.ee
+    metallb.universe.tf/address-pool: eenet
+spec:
+  type: LoadBalancer
+  externalTrafficPolicy: Local
+  selector:
+    app.kubernetes.io/component: database
+    app.kubernetes.io/instance: mysql-innodbcluster-mysql-cluster-shared-mysql-server
+    mysql.oracle.com/cluster-role: PRIMARY
+  ports:
+  - port: 3306
+    name: mysql

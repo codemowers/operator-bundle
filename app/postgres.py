@@ -106,6 +106,8 @@ async def creation(name, namespace, body, **kwargs):
                         }]
                     }
                 }
+            }
+        }
 
         kopf.append_owner_reference(body, owner, block_owner_deletion=False)
         try:

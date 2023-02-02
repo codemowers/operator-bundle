@@ -187,6 +187,9 @@ async def creation(name, namespace, body, **kwargs):
                 "template": {
                     "metadata": {
                         "labels": labels,
+                        "annotations": {
+                            "redises.codemowers.io/class": class_body["metadata"]["name"]
+                        }
                     },
                     "spec": pod_spec,
                 },
