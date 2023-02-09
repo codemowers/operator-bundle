@@ -141,10 +141,6 @@ async def creation(name, namespace, body, **kwargs):
         elif "redis" in container_spec["image"].lower():
             if replicas > 1:
                 raise NotImplementedError("Multiple replica deployment of vanilla Redis not supported")
-            extra_secret_mappings = [{
-                "key": "REDIS_%d_URI" % j,
-                "value": "redis://:%%(plaintext)s@%s/%d" % (service_fqdn, j),
-            } for j in range(0, 16)]
         else:
             raise NotImplementedError("Don't know which implementation to use for image %s" % repr(container_spec["image"]))
 
@@ -301,7 +297,10 @@ async def creation(name, namespace, body, **kwargs):
         }, {
             "key": "REDIS_URI",
             "value": "redis://:%%(plaintext)s@%s" % service_fqdn,
-        }] + extra_secret_mappings)
+        }] + [{
+            "key": "REDIS_%d_URI" % j,
+            "value": "redis://:%%(plaintext)s@%s/%d" % (service_fqdn, j),
+        } for j in range(0, 16)])
         kopf.append_owner_reference(body, block_owner_deletion=False)
         try:
             await v1.create_namespaced_secret(namespace, client.V1Secret(**body))
