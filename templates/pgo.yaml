@@ -70,6 +70,6 @@ spec:
       serviceAccountName: postgres-database-operator
       containers:
         - name: postgres-database-operator
-          image: harbor.k-space.ee/k-space/operator-bundle
+          image: {{ .Values.image }}
           command:
             - /app/postgres.py

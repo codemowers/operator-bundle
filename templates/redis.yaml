@@ -70,6 +70,6 @@ spec:
       serviceAccountName: redis-operator
       containers:
         - name: redis-operator
-          image: harbor.k-space.ee/k-space/operator-bundle
+          image: {{ .Values.image }}
           command:
             - /app/redis.py

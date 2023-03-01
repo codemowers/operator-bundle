@@ -70,6 +70,6 @@ spec:
       serviceAccountName: mysql-database-operator
       containers:
         - name: mysql-database-operator
-          image: harbor.k-space.ee/k-space/operator-bundle
+          image: {{ .Values.image }}
           command:
             - /app/mysql.py

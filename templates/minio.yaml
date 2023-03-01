@@ -70,6 +70,6 @@ spec:
       serviceAccountName: minio-bucket-operator
       containers:
         - name: minio-bucket-operator
-          image: harbor.k-space.ee/k-space/operator-bundle
+          image: {{ .Values.image }}
           command:
             - /app/minio.py
