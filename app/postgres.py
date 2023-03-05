@@ -8,36 +8,17 @@ import psycopg2
 from base64 import b64decode
 from kubernetes_asyncio.client.exceptions import ApiException
 from kubernetes_asyncio import client, config
-from lib import Secret, make_selector
+from lib import Secret, make_selector, make_resolver, parse_capacity
+
+resolve_instance = make_resolver("clusterpostgresdatabaseclasses", "v1alpha1")
 
 
 @kopf.on.resume("postgresdatabases.codemowers.io")
 @kopf.on.create("postgresdatabases.codemowers.io")
 async def creation(name, namespace, body, **kwargs):
-    api_client = client.ApiClient()
-    api_instance = client.CustomObjectsApi(api_client)
+    target_namespace, instance, owner, api_client, api_instance, class_spec = await resolve_instance(
+        namespace, name, body)
     v1 = client.CoreV1Api(api_client)
-
-    class_body = await api_instance.get_cluster_custom_object(
-        "codemowers.io",
-        "v1alpha1",
-        "clusterpostgresdatabaseclasses",
-        body["spec"]["class"])
-
-    # Handle target namespace/cluster mapping
-    target_namespace = class_body["spec"].get("targetNamespace", namespace)
-    instance = class_body["spec"].get("targetCluster", name)
-
-    # TODO: Make sure origin namespace/name do not contain dashes,
-    # or find some other trick to prevent name collisions
-
-    # Prefix instance name with origin namespace if
-    # we're hoarding instances into single namespace
-    if "targetNamespace" in class_body["spec"] and "targetCluster" not in class_body["spec"]:
-        instance = "%s-%s" % (namespace, instance)
-
-    # Derive owner object for Kopf
-    owner = body if target_namespace == namespace else class_body
 
     capacity = body["spec"]["capacity"]
     replicas = class_spec["replicas"]
@@ -45,8 +26,8 @@ async def creation(name, namespace, body, **kwargs):
 
     labels, label_selector = make_selector("postgres", instance)
 
-    pod_spec = class_body["spec"].get("podSpec", {})
-    storage_class = class_body["spec"].get("storageClass", None)
+    pod_spec = class_spec.get("podSpec", {})
+    storage_class = class_spec.get("storageClass", None)
 
     if storage_class:
         body = {
@@ -59,9 +40,9 @@ async def creation(name, namespace, body, **kwargs):
             },
             "spec": {
                 "proxy": {
-                  "pgBouncer": {
-                    "replicas": routers
-                  }
+                    "pgBouncer": {
+                        "replicas": routers
+                    }
                 },
                 "users": [{
                     "name": "postgres",
@@ -75,7 +56,7 @@ async def creation(name, namespace, body, **kwargs):
                         "podAntiAffinity": {
                             "requiredDuringSchedulingIgnoredDuringExecution": [{
                                 "labelSelector": label_selector,
-                                "topologyKey": class_body["spec"].get("topologyKey", "topology.kubernetes.io/zone")
+                                "topologyKey": class_spec.get("topologyKey", "topology.kubernetes.io/zone")
                             }]
                         }
                     },
@@ -98,7 +79,7 @@ async def creation(name, namespace, body, **kwargs):
                                     "accessModes": ["ReadWriteOnce"],
                                     "resources": {
                                         "requests": {
-                                            "storage": 2 * capacity
+                                            "storage": "%dMi" % (parse_capacity(capacity) // 524288),
                                         }
                                     }
                                 }
@@ -132,7 +113,7 @@ async def creation(name, namespace, body, **kwargs):
         "postgres-%s-pguser-postgres" % instance,
         target_namespace)
     cluster_port = int(b64decode(cluster_secrets.data["port"]).decode("ascii"))
-    cluster_hostname = b64decode(cluster_secrets.data["pgbouncer-host"]).decode("ascii")
+    cluster_hostname = b64decode(cluster_secrets.data["host"]).decode("ascii")
 
     conn = await aiopg.connect(
         database="postgres",
