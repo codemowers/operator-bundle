@@ -123,7 +123,7 @@ async def creation(name, namespace, body, **kwargs):
     cluster_secrets = await v1.read_namespaced_secret(
         "%s-secrets" % instance,
         target_namespace)
-    cluster_hostname = instance
+    cluster_hostname = "%s.%s.svc.cluster.local" % (instance, target_namespace)
     cluster_port = 6446
 
     conn = await aiomysql.connect(
