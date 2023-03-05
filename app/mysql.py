@@ -123,8 +123,8 @@ async def creation(name, namespace, body, **kwargs):
     cluster_secrets = await v1.read_namespaced_secret(
         "%s-secrets" % instance,
         target_namespace)
-    cluster_hostname = "%s.%s.svc.cluster.local" % (instance, target_namespace)
-    cluster_port = 6446
+    cluster_hostname = "%s-primary.%s.svc.cluster.local" % (instance, target_namespace)
+    cluster_port = 3306
 
     conn = await aiomysql.connect(
         host=cluster_hostname,
@@ -195,8 +195,8 @@ async def deletion(name, namespace, body, **kwargs):
     cluster_secrets = await v1.read_namespaced_secret(
         "%s-secrets" % instance,
         target_namespace)
-    cluster_hostname = "%s.%s.svc.cluster.local" % (instance, target_namespace)
-    cluster_port = 6446
+    cluster_hostname = "%s-primary.%s.svc.cluster.local" % (instance, target_namespace)
+    cluster_port = 3306
 
     conn = await aiomysql.connect(
         host=cluster_hostname,
