@@ -164,7 +164,7 @@ async def creation(name, namespace, body, **kwargs):
             user_name, cluster_hostname, cluster_port, database_name)
     }])
 
-    await cur.execute("CREATE USER IF NOT EXISTS %s@'%%' IDENTIFIED BY %s" % (
+    await cur.execute("CREATE USER IF NOT EXISTS %s@'%%' IDENTIFIED WITH mysql_native_password BY %s" % (
         repr(user_name), repr(database_secrets["plaintext"])))
 
     kopf.append_owner_reference(body, owner, block_owner_deletion=False)
