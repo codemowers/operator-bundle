@@ -146,6 +146,9 @@ async def creation(name, namespace, body, **kwargs):
         "key": "MYSQL_TCP_PORT",
         "value": str(cluster_port)
     }, {
+        "key": "MYSQL_USER",
+        "value": user_name
+    }, {
         "key": "MYSQL_PASSWORD",
         "value": "%(plaintext)s"
     }, {
