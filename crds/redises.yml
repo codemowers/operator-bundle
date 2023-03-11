@@ -93,6 +93,8 @@ spec:
         properties:
           spec:
             properties:
+              adminUri:
+                type: string
               description:
                 type: string
               headlessServiceSpec:

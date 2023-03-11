@@ -101,6 +101,8 @@ spec:
         properties:
           spec:
             properties:
+              adminUri:
+                type: string
               customResourceSpec:
                 type: object
                 x-kubernetes-preserve-unknown-fields: true

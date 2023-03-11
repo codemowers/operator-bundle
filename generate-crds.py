@@ -7,6 +7,7 @@ PROPS_COMMON = (
   ("replicas", { "type": "integer" }),
   ("topologyKey", { "type": "string" }),
   ("podSpec", { "type": "object", "x-kubernetes-preserve-unknown-fields": True }),
+  ("adminUri", { "type": "string" }),
 )
 
 PROPS_SHAREABLE = (
