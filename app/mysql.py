@@ -7,7 +7,15 @@ import os
 from base64 import b64decode
 from kubernetes_asyncio.client.exceptions import ApiException
 from kubernetes_asyncio import client, config
-from lib import Secret, make_selector, make_resolver
+from .lib import Secret, make_selector, make_resolver
+from .lib2 import ShareableMixin, PersistentMixin, CustomResourceMixin, RoutedMixin, CapacityMixin, ClassedOperator
+
+class MysqlDatabase(ShareableMixin, PersistentMixin, CustomResourceMixin, RoutedMixin, CapacityMixin, ClassedOperator):
+    GROUP = "codemowers.io"
+    VERSION = "v1alpha1"
+    SINGULAR = "MysqlDatabase"
+    PLURAL = "MysqlDatabases"
+
 
 resolve_instance = make_resolver("clustermysqldatabaseclasses", "v1alpha1", "mysql-cluster-%s")
 
@@ -231,4 +239,4 @@ async def configure(settings: kopf.OperatorSettings, **_):
     settings.persistence.finalizer = "mysql-operator"
     logging.info("mysql-operator starting up")
 
-asyncio.run(kopf.operator(clusterwide=True))
+#asyncio.run(kopf.operator(clusterwide=True))

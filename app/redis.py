@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
-import asyncio
-import kopf
-import logging
-import os
-from base64 import b64decode
-from kubernetes_asyncio.client.exceptions import ApiException
-from kubernetes_asyncio import client, config, utils
-from lib import Secret, make_selector, parse_capacity
+from .lib2 import PersistentMixin, StatefulSetMixin, CapacityMixin, ClassedOperator
 
 REDIS_PORT = 6379
 
+class Redis(PersistentMixin, StatefulSetMixin, CapacityMixin, ClassedOperator):
+    GROUP = "codemowers.io"
+    VERSION = "v1alpha1"
+    SINGULAR = "Redis"
+    PLURAL = "Redises"
 
+assert "image" in [j[0] for j in Redis().get_class_properties()]
+assert "storageClass" in [j[0] for j in Redis().get_class_properties()]
+assert "secretSpec" in [j[0] for j in Redis().get_class_properties()]
+
+"""
 @kopf.on.delete("redises.codemowers.io")
 async def deletion(name, namespace, body, **kwargs):
     api_client = client.ApiClient()
@@ -327,3 +330,4 @@ async def configure(settings: kopf.OperatorSettings, **_):
     logging.info("redis-operator starting up")
 
 asyncio.run(kopf.operator(clusterwide=True))
+"""

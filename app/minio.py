@@ -1,4 +1,14 @@
 #!/usr/bin/env python3
+
+from .lib2 import IngressMixin, ShareableMixin, PersistentMixin, StatefulSetMixin, CapacityMixin, ClassedOperator
+
+class Bucket(IngressMixin, ShareableMixin, PersistentMixin, StatefulSetMixin, CapacityMixin, ClassedOperator):
+    GROUP = "codemowers.io"
+    VERSION = "v1alpha1"
+    SINGULAR = "Bucket"
+    PLURAL = "Buckets"
+
+
 import asyncio
 import httpx
 import kopf
@@ -8,7 +18,7 @@ from base64 import b64decode
 from httpx_auth import AWS4Auth
 from kubernetes_asyncio.client.exceptions import ApiException
 from kubernetes_asyncio import client, config, utils
-from lib import Secret, make_selector, parse_capacity
+from .lib import Secret, make_selector, parse_capacity
 from miniopy_async import MinioAdmin
 
 
@@ -335,4 +345,4 @@ async def configure(settings: kopf.OperatorSettings, **_):
     logging.info("minio-operator starting up")
 
 
-asyncio.run(kopf.operator(clusterwide=True))
+#asyncio.run(kopf.operator(clusterwide=True))

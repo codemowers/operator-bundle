@@ -8,7 +8,15 @@ import psycopg2
 from base64 import b64decode
 from kubernetes_asyncio.client.exceptions import ApiException
 from kubernetes_asyncio import client, config
-from lib import Secret, make_selector, make_resolver, parse_capacity
+from .lib import Secret, make_selector, make_resolver, parse_capacity
+from .lib2 import ShareableMixin, PersistentMixin, CustomResourceMixin, RoutedMixin, CapacityMixin, ClassedBase
+
+class PostgresDatabase(ShareableMixin, PersistentMixin, CustomResourceMixin, RoutedMixin, CapacityMixin, ClassedBase):
+    GROUP = "codemowers.io"
+    VERSION = "v1alpha1"
+    SINGULAR = "PostgresDatabase"
+    PLURAL = "PostgresDatabases"
+
 
 resolve_instance = make_resolver("clusterpostgresdatabaseclasses", "v1alpha1")
 
@@ -188,4 +196,4 @@ async def configure(settings: kopf.OperatorSettings, **_):
     settings.persistence.finalizer = "postgres-operator"
     logging.info("postgres-operator starting up")
 
-asyncio.run(kopf.operator(clusterwide=True))
+#asyncio.run(kopf.operator(clusterwide=True))
