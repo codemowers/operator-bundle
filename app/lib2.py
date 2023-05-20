@@ -1,3 +1,7 @@
+
+from kubernetes_asyncio import client, config, utils, watch
+import os
+import asyncio
 import re
 import yaml
 
@@ -46,24 +50,60 @@ def sentence_case(string):
 
 
 class Operator():
-    def __init__(self):
-        pass
+    def generate_manifests(self):
+        return []
+
+    def get_target_name(self):
+        return self.name
+
+    def get_target_namespace(self):
+        return self.namespace
+
+    def get_props(self):
+        return [
+            ("origin_namespace", self.namespace),
+            ("origin_name", self.name),
+            ("target_name", self.get_target_name())
+        ]
+
+    def __repr__(self):
+        return "%s(%s)" % (self.__class__.__name__, ", ".join(["%s=%s" % (k,repr(v)) for k,v in self.get_props()]))
+
+
+    def __init__(self, body):
+        self.namespace = body["metadata"]["namespace"]
+        self.name = body["metadata"]["name"]
+        self.spec = body["spec"]
+
 
     @classmethod
-    def _run(cls):
+    async def _construct_resource(cls, co, body):
+        return cls(body)
+
+
+    @classmethod
+    async def _run(cls):
         if os.getenv("KUBECONFIG"):
             await config.load_kube_config()
         else:
             config.load_incluster_config()
         api_client = client.ApiClient()
-        api_instance = client.CustomObjectsApi(api_client)
+        co = client.CustomObjectsApi(api_client)
         v1 = client.CoreV1Api(api_client)
+        w = watch.Watch()
 
-        class_body = await api_instance.get_cluster_custom_object(
-            "codemowers.io",
-            "v1alpha1",
-            "clusterbucketclasses",
-            body["spec"]["class"])
+        async for event in w.stream(co.list_namespaced_custom_object, cls.GROUP, cls.VERSION, '', cls.PLURAL.lower()):
+            body = event["object"]
+            instance = await cls._construct_resource(co, body)
+            print(instance)
+            if event["type"] in ("ADDED", "MODIFIED"):
+                await instance.reconcile()
+            elif event["type"] == "DELETED":
+                await instance.cleanup()
+            else:
+                print("Don't know how to handle event type", event)
+
+
 
     @classmethod
     def run(cls):
@@ -72,7 +112,6 @@ class Operator():
     @classmethod
     def get_instance_properties(cls):
         return []
-
 
     @classmethod
     def get_instance_printer_columns(cls):
@@ -127,6 +166,32 @@ class Operator():
         }
 
 class ClassedOperator(Operator):
+    def __init__(self, body, class_body):
+        super(ClassedOperator, self).__init__(body)
+        self.class_name = class_body["metadata"]["name"]
+        self.class_spec = class_body["spec"]
+
+    def get_target_namespace(self):
+        return self.class_spec.get("targetNamespace", self.namespace)
+
+
+    def get_props(self):
+        return super(ClassedOperator, self).get_props() + [
+            ("target_namespace", self.get_target_namespace()),
+            ("class", self.class_name),
+        ]
+
+
+    @classmethod
+    async def _construct_resource(cls, co, body):
+        class_body = await co.get_cluster_custom_object(
+            cls.GROUP,
+            cls.VERSION,
+            "cluster%sclasses" % cls.SINGULAR.lower(),
+            body["spec"]["class"])
+        return cls(body, class_body)
+
+
     @classmethod
     def get_class_properties(cls):
         return [
@@ -138,6 +203,7 @@ class ClassedOperator(Operator):
             ("adminUri", { "type": "string" }),
         ]
 
+
     @classmethod
     def get_instance_printer_columns(cls):
         return super(ClassedOperator, cls).get_instance_printer_columns() + [{
@@ -145,6 +211,7 @@ class ClassedOperator(Operator):
             "jsonPath": ".spec.class",
             "type": "string",
         }]
+
 
     @classmethod
     def get_instance_properties(cls):
@@ -228,6 +295,22 @@ class ClassedOperator(Operator):
         }
 
 class CapacityMixin():
+    def get_capacity(self):
+        return self._parse_capacity(self.spec["capacity"])
+
+    @classmethod
+    def _parse_capacity(cls, s):
+        """
+        Assumes the string is already validated by CRD
+        """
+        if s[-1] == "i":
+            s = s[:-1]
+            m = 1024
+        else:
+            m = 1000
+        v, p = int(s[:-1]), s[-1]
+        return v * m ** {"M": 2, "G": 3, "T": 4, "P": 5}[p]
+
     @classmethod
     def get_instance_printer_columns(cls):
         return super(CapacityMixin, cls).get_instance_printer_columns() + [{
@@ -249,6 +332,7 @@ class PersistentMixin():
             ("storageClass", { "type": "string" }),
         ]
 
+
 class StatefulSetMixin():
     @classmethod
     def get_class_properties(self):
@@ -259,7 +343,59 @@ class StatefulSetMixin():
             ("headlessServiceSpec", { "type": "object", "x-kubernetes-preserve-unknown-fields": True }),
         ]
 
+
+    def get_label_selector(self):
+        """
+        Build labels and label selector for application/instance
+        """
+        labels = {
+            "app.kubernetes.io/name": self.__class__.__name__.lower(),
+            "app.kubernetes.io/instance": self.get_target_name(),
+            "codemowers.io/class": self.class_name,
+        }
+
+        expressions = []
+        for key, value in labels.items():
+            expressions.append({
+                "key": key,
+                "operator": "In",
+                "values": [value]
+            })
+
+        selector = {
+            "matchExpressions": expressions
+        }
+        return labels, selector
+
+    def get_service_name(self):
+        return self.get_target_name()
+
+    def get_headless_service_name(self):
+        return "%s-headless" % self.get_target_name()
+
+    async def generate_stateful_set():
+        raise NotImplementedError()
+
+    async def generate_service():
+        raise NotImplementedError()
+
+    async def generate_headless_service():
+        raise NotImplementedError()
+
+    async def generate_manifests(self):
+        manifests = super(StatefulSetMixin, self).generate_manifests()
+        labels, label_selector = self.get_label_selector()
+        manifests.append(await self.generate_headless_service(labels))
+        if self.class_spec.get("podSpec"):
+            manifests.append(await self.generate_stateful_set(labels, label_selector))
+        manifests.append(await self.generate_service(labels))
+        return manifests
+
+
 class ShareableMixin():
+    def get_target_name(self):
+        return self.class_spec.get("targetCluster", self.name)
+
     @classmethod
     def get_class_properties(self):
         return super(ShareableMixin, self).get_class_properties() + [
@@ -267,12 +403,16 @@ class ShareableMixin():
         ]
 
 class RoutedMixin:
+    """
+    Handle deployment of routers (eg. mysql-router)
+    """
     @classmethod
     def get_class_properties(self):
         return super(RoutedMixin, self).get_class_properties() + [
             ("routers", {"type": "integer"}),
             ("routerPodSpec", { "type": "object", "x-kubernetes-preserve-unknown-fields": True }),
         ]
+
 
 class CustomResourceMixin:
     """
@@ -283,6 +423,7 @@ class CustomResourceMixin:
         return super(CustomResourceMixin, self).get_class_properties() + [
             ("customResourceSpec", { "type": "object", "x-kubernetes-preserve-unknown-fields": True }),
         ]
+
 
 class IngressMixin:
     """

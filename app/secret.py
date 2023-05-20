@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-from .lib2 import PersistentMixin, StatefulSetMixin, Operator
+from lib2 import PersistentMixin, StatefulSetMixin, Operator
 
 class Secret(Operator):
     GROUP = "codemowers.io"
@@ -17,6 +17,8 @@ class Secret(Operator):
         ]
 
     async def reconcile(self):
+        print("yay")
+        """
         api_client = client.ApiClient()
         v1 = client.CoreV1Api(api_client)
 
@@ -34,6 +36,7 @@ class Secret(Operator):
         else:
             logging.info("Created secret %s/%s" % (namespace, sec.name))
         return {"state": "READY"}
+        """
 
 if __name__ == "__main__":
-    Secret().run()
+    Secret.run()

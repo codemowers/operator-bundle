@@ -1,29 +1,120 @@
 #!/usr/bin/env python3
 
-from .lib2 import IngressMixin, ShareableMixin, PersistentMixin, StatefulSetMixin, CapacityMixin, ClassedOperator
+import json
+from lib2 import IngressMixin, ShareableMixin, PersistentMixin, StatefulSetMixin, CapacityMixin, ClassedOperator
 
-class Bucket(IngressMixin, ShareableMixin, PersistentMixin, StatefulSetMixin, CapacityMixin, ClassedOperator):
+class Minio(IngressMixin, ShareableMixin, PersistentMixin, StatefulSetMixin, CapacityMixin, ClassedOperator):
     GROUP = "codemowers.io"
     VERSION = "v1alpha1"
     SINGULAR = "Bucket"
     PLURAL = "Buckets"
 
+    async def generate_headless_service(self, labels):
+        return {
+            "kind": "Service",
+            "apiVersion": "v1",
+            "metadata": {
+                "namespace": self.get_target_namespace(),
+                "name": self.get_headless_service_name(),
+            },
+            "spec": {
+                "selector": labels,
+                "clusterIP": "None",
+                "publishNotReadyAddresses": True,
+                "ports": [{
+                    "name": "http",
+                    "port": 9000
+                }]
+            }
+        }
 
-import asyncio
-import httpx
-import kopf
-import logging
-import os
-from base64 import b64decode
-from httpx_auth import AWS4Auth
-from kubernetes_asyncio.client.exceptions import ApiException
-from kubernetes_asyncio import client, config, utils
-from .lib import Secret, make_selector, parse_capacity
-from miniopy_async import MinioAdmin
+    async def generate_service(self, labels):
+        return {
+            "kind": "Service",
+            "apiVersion": "v1",
+            "metadata": {
+                "namespace": self.get_target_namespace(),
+                "name": self.get_service_name(),
+            },
+            "spec": {
+                "selector": labels,
+                "sessionAffinity": "ClientIP",
+                "type": "ClusterIP",
+                "ports": [{
+                    "port": 80,
+                    "targetPort": 9000,
+                    "name": "http",
+                }]
+            }
+
+        }
+
+    async def generate_stateful_set(self, labels, label_selector):
+        service_name = self.get_target_name()
+        replicas = self.class_spec["replicas"]
+        pod_spec = self.class_spec["podSpec"]
+        pod_spec["affinity"] = {
+            "podAntiAffinity": {
+                "requiredDuringSchedulingIgnoredDuringExecution": [{
+                    "labelSelector": label_selector,
+                    "topologyKey": self.class_spec.get("topologyKey", "topology.kubernetes.io/zone")
+                }]
+            }
+        }
 
 
-@kopf.on.resume("buckets.codemowers.io")
-@kopf.on.create("buckets.codemowers.io")
+        container_spec = pod_spec["containers"][0]
+        container_spec["args"].append("http://%s-{0...%d}.%s.%s.svc.cluster.local/data" % (
+            service_name, replicas - 1, self.get_headless_service_name(), self.get_target_namespace()))
+        #container_spec["envFrom"] = [{
+        #    "secretRef": {
+        #        "name": sec.name
+        #    }
+        #}]
+
+        return {
+            "apiVersion": "apps/v1",
+            "kind": "StatefulSet",
+            "metadata": {
+                "namespace": self.get_target_namespace(),
+                "name": "minio-cluster-%s" % self.get_target_name(),
+                "labels": labels,
+            },
+            "spec": {
+                "selector": {
+                    "matchLabels": labels,
+                },
+                "serviceName": self.get_headless_service_name(),
+                "replicas": replicas,
+                "podManagementPolicy": "Parallel",
+                "template": {
+                    "metadata": {
+                        "labels": labels,
+                    },
+                    "spec": pod_spec,
+                },
+                "volumeClaimTemplates": [{
+                    "metadata": {
+                        "name": "data",
+                    },
+                    "spec": {
+                        "accessModes": ["ReadWriteOnce"],
+                        "resources": {
+                            "requests": {
+                                "storage": self.get_capacity(),
+                            }
+                        },
+                        "storageClassName": self.class_spec["storageClass"],
+                    }
+                }]
+            }
+        }
+
+    async def reconcile(self):
+        print(json.dumps(await self.generate_manifests(), indent=2))
+
+
+
 async def creation(name, namespace, body, **kwargs):
     logging.info("Processing %s/%s" % (namespace, name))
     api_client = client.ApiClient()
@@ -332,17 +423,5 @@ async def creation(name, namespace, body, **kwargs):
 
     return {"state": "READY"}
 
-
-@kopf.on.startup()
-async def configure(settings: kopf.OperatorSettings, **_):
-    if os.getenv("KUBECONFIG"):
-        await config.load_kube_config()
-    else:
-        config.load_incluster_config()
-    settings.scanning.disabled = True
-    settings.posting.enabled = True
-    settings.persistence.finalizer = "minio-operator"
-    logging.info("minio-operator starting up")
-
-
-#asyncio.run(kopf.operator(clusterwide=True))
+if __name__ == "__main__":
+    Minio.run()
