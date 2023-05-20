@@ -1,67 +1,62 @@
 #!/usr/bin/env python3
 
-import json
-from lib2 import IngressMixin, ShareableMixin, PersistentMixin, StatefulSetMixin, CapacityMixin, ClassedOperator
+from lib2 import IngressMixin, ShareableMixin, PersistentMixin, StatefulSetMixin, CapacityMixin, HeadlessMixin, ServiceMixin, ClassedOperator
 
-class Minio(IngressMixin, ShareableMixin, PersistentMixin, StatefulSetMixin, CapacityMixin, ClassedOperator):
+
+class Minio(IngressMixin, ShareableMixin, PersistentMixin, StatefulSetMixin, CapacityMixin, HeadlessMixin, ServiceMixin, ClassedOperator):
+    """
+    Minio operator implementation
+    """
+
     GROUP = "codemowers.io"
     VERSION = "v1alpha1"
     SINGULAR = "Bucket"
     PLURAL = "Buckets"
 
-    async def generate_headless_service(self, labels):
+    def generate_headless_service(self):
+        """
+        Generate Kubernetes headless Service specification
+        """
         return {
-            "kind": "Service",
-            "apiVersion": "v1",
-            "metadata": {
-                "namespace": self.get_target_namespace(),
-                "name": self.get_headless_service_name(),
-            },
-            "spec": {
-                "selector": labels,
-                "clusterIP": "None",
-                "publishNotReadyAddresses": True,
-                "ports": [{
-                    "name": "http",
-                    "port": 9000
-                }]
-            }
+            "selector": self.labels,
+            "clusterIP": "None",
+            "publishNotReadyAddresses": True,
+            "ports": [{
+                "name": "http",
+                "port": 9000
+            }]
         }
 
-    async def generate_service(self, labels):
+    def generate_service(self):
+        """
+        Generate Kubernetes Service specification
+        """
         return {
-            "kind": "Service",
-            "apiVersion": "v1",
-            "metadata": {
-                "namespace": self.get_target_namespace(),
-                "name": self.get_service_name(),
-            },
-            "spec": {
-                "selector": labels,
-                "sessionAffinity": "ClientIP",
-                "type": "ClusterIP",
-                "ports": [{
-                    "port": 80,
-                    "targetPort": 9000,
-                    "name": "http",
-                }]
-            }
-
+            "selector": labels,
+            "sessionAffinity": "ClientIP",
+            "type": "ClusterIP",
+            "ports": [{
+                "port": 80,
+                "targetPort": 9000,
+                "name": "http",
+            }]
         }
 
-    async def generate_stateful_set(self, labels, label_selector):
+    def generate_stateful_set(self):
+        """
+        Generate Kubernetes StatefulSet specification
+        """
         service_name = self.get_target_name()
         replicas = self.class_spec["replicas"]
         pod_spec = self.class_spec["podSpec"]
         pod_spec["affinity"] = {
             "podAntiAffinity": {
                 "requiredDuringSchedulingIgnoredDuringExecution": [{
-                    "labelSelector": label_selector,
+                    "labelSelector": self.label_selector,
                     "topologyKey": self.class_spec.get("topologyKey", "topology.kubernetes.io/zone")
                 }]
             }
         }
-
 
         container_spec = pod_spec["containers"][0]
         container_spec["args"].append("http://%s-{0...%d}.%s.%s.svc.cluster.local/data" % (
@@ -73,48 +68,35 @@ class Minio(IngressMixin, ShareableMixin, PersistentMixin, StatefulSetMixin, Cap
         #}]
 
         return {
-            "apiVersion": "apps/v1",
-            "kind": "StatefulSet",
-            "metadata": {
-                "namespace": self.get_target_namespace(),
-                "name": "minio-cluster-%s" % self.get_target_name(),
-                "labels": labels,
+            "selector": {
+                "matchLabels": self.labels,
             },
-            "spec": {
-                "selector": {
-                    "matchLabels": labels,
+            "serviceName": self.get_headless_service_name(),
+            "replicas": replicas,
+            "podManagementPolicy": "Parallel",
+            "template": {
+                "metadata": {
+                    "labels": self.labels,
                 },
-                "serviceName": self.get_headless_service_name(),
-                "replicas": replicas,
-                "podManagementPolicy": "Parallel",
-                "template": {
-                    "metadata": {
-                        "labels": labels,
-                    },
-                    "spec": pod_spec,
+                "spec": pod_spec,
+            },
+            "volumeClaimTemplates": [{
+                "metadata": {
+                    "name": "data",
                 },
-                "volumeClaimTemplates": [{
-                    "metadata": {
-                        "name": "data",
+                "spec": {
+                    "accessModes": ["ReadWriteOnce"],
+                    "resources": {
+                        "requests": {
+                            "storage": self.get_capacity(),
+                        }
                     },
-                    "spec": {
-                        "accessModes": ["ReadWriteOnce"],
-                        "resources": {
-                            "requests": {
-                                "storage": self.get_capacity(),
-                            }
-                        },
-                        "storageClassName": self.class_spec["storageClass"],
-                    }
-                }]
-            }
+                    "storageClassName": self.class_spec["storageClass"],
+                }
+            }]
         }
 
-    async def reconcile(self):
-        print(json.dumps(await self.generate_manifests(), indent=2))
-
-
-
+"""
 async def creation(name, namespace, body, **kwargs):
     logging.info("Processing %s/%s" % (namespace, name))
     api_client = client.ApiClient()
@@ -339,7 +321,7 @@ async def creation(name, namespace, body, **kwargs):
         '''
         # Following returns HTTP status code 400 for some reason
         # Set expiration
-        rules = """<?xml version="1.0" encoding="UTF-8"?>
+        rules = '''<?xml version="1.0" encoding="UTF-8"?>
           <LifecycleConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
             <Rule>
               <Expiration>
@@ -351,7 +333,7 @@ async def creation(name, namespace, body, **kwargs):
               </Filter>
               <Status>Enabled</Status>
             </Rule>
-          </LifecycleConfiguration>""" % expiration
+          </LifecycleConfiguration>''' % expiration
 
         # Set expiration
         r = await requests.put(url + "?lifecycle", auth=aws,
@@ -422,6 +404,7 @@ async def creation(name, namespace, body, **kwargs):
     admin.policy_set("owner", user=access_key)
 
     return {"state": "READY"}
+"""
 
 if __name__ == "__main__":
     Minio.run()

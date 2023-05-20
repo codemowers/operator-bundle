@@ -8,19 +8,43 @@ import psycopg2
 from base64 import b64decode
 from kubernetes_asyncio.client.exceptions import ApiException
 from kubernetes_asyncio import client, config
-from .lib import Secret, make_selector, make_resolver, parse_capacity
-from .lib2 import ShareableMixin, PersistentMixin, CustomResourceMixin, RoutedMixin, CapacityMixin, ClassedBase
+from lib2 import ShareableMixin, PersistentMixin, CustomResourceMixin, RoutedMixin, CapacityMixin, ClassedOperator
 
-class PostgresDatabase(ShareableMixin, PersistentMixin, CustomResourceMixin, RoutedMixin, CapacityMixin, ClassedBase):
+class PostgresDatabase(ShareableMixin, PersistentMixin, CustomResourceMixin, RoutedMixin, CapacityMixin, ClassedOperator):
+    """
+    Postgres database operator implementation using CloudNativePG
+    """
+    
     GROUP = "codemowers.io"
     VERSION = "v1alpha1"
     SINGULAR = "PostgresDatabase"
     PLURAL = "PostgresDatabases"
 
+    def generate_custom_resource(self):
+        return {
+            "apiVersion": "postgresql.cnpg.io/v1",
+            "kind": "Cluster",
+            "metadata": {
+                "namespace": self.get_target_namespace(),
+                "name": self.get_target_name(),
+            },
+            "spec": {
+                "instances": self.class_spec["replicas"],
+                "storage": {
+                    "size": self.get_capacity(),
+                    "storageClassName": self.class_spec.get("storageClass"),
+                },
+                "monitoring": {
+                    "enablePodMonitor": "true"
+                }
+            }
+        }
 
-resolve_instance = make_resolver("clusterpostgresdatabaseclasses", "v1alpha1")
+if __name__ == "__main__":
+    PostgresDatabase.run()
 
 
+"""
 @kopf.on.resume("postgresdatabases.codemowers.io")
 @kopf.on.create("postgresdatabases.codemowers.io")
 async def creation(name, namespace, body, **kwargs):
@@ -197,3 +221,4 @@ async def configure(settings: kopf.OperatorSettings, **_):
     logging.info("postgres-operator starting up")
 
 #asyncio.run(kopf.operator(clusterwide=True))
+"""

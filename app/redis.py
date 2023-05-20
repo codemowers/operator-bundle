@@ -1,17 +1,145 @@
 #!/usr/bin/env python3
-from .lib2 import PersistentMixin, StatefulSetMixin, CapacityMixin, ClassedOperator
+from lib2 import PersistentMixin, StatefulSetMixin, CapacityMixin, HeadlessMixin, ClassedOperator
 
-REDIS_PORT = 6379
 
-class Redis(PersistentMixin, StatefulSetMixin, CapacityMixin, ClassedOperator):
+class Redis(PersistentMixin, StatefulSetMixin, CapacityMixin, HeadlessMixin, ClassedOperator):
+    """
+    Redis operator implementation
+    """
+
     GROUP = "codemowers.io"
     VERSION = "v1alpha1"
     SINGULAR = "Redis"
     PLURAL = "Redises"
 
-assert "image" in [j[0] for j in Redis().get_class_properties()]
-assert "storageClass" in [j[0] for j in Redis().get_class_properties()]
-assert "secretSpec" in [j[0] for j in Redis().get_class_properties()]
+    def generate_headless_service(self,):
+        """
+        Generate Kubernetes headless Service specification
+        """
+        return {
+            "selector": self.labels,
+            "clusterIP": "None",
+            "publishNotReadyAddresses": True,
+            "ports": [{
+                "name": "redis",
+                "port": 6379
+            }]
+        }
+
+    def generate_service(self,):
+        """
+        Generate Kubernetes Service specification
+        """
+        return {
+            "selector": self.labels,
+            "sessionAffinity": "ClientIP",
+            "type": "ClusterIP",
+            "ports": [{
+                "port": 6379,
+                "name": "redis",
+            }]
+        }
+
+    def generate_stateful_set(self):
+        """
+        Generate Kubernetes StatefulSet specification
+        """
+        storage_class = self.class_spec.get("storageClass")
+        replicas = self.class_spec["replicas"]
+        pod_spec = self.class_spec["podSpec"]
+        pod_spec["affinity"] = {
+            "podAntiAffinity": {
+                "requiredDuringSchedulingIgnoredDuringExecution": [{
+                    "labelSelector": self.label_selector,
+                    "topologyKey": self.class_spec.get("topologyKey", "topology.kubernetes.io/zone")
+                }]
+            }
+        }
+
+        # Assume it's the first container in the pod
+        container_spec = pod_spec["containers"][0]
+
+        args = [
+            "--maxmemory",
+            "%d" % self.get_capacity(),
+        ]
+
+        if "keydb" in container_spec["image"].lower():
+            if replicas > 1:
+                args += [
+                    "--active-replica",
+                    "yes",
+                    "--multi-master",
+                    "yes"
+                ]
+        elif "redis" in container_spec["image"].lower():
+            if replicas > 1:
+                raise NotImplementedError("Multiple replica deployment of vanilla Redis not supported")
+        else:
+            raise NotImplementedError("Don't know which implementation to use for image %s" % repr(container_spec["image"]))
+
+        if not storage_class:
+            args += [
+                "--save",
+                ""
+            ]
+
+        # Create stateful set
+        container_spec["args"] = container_spec.get("args", []) + args
+        container_spec["env"] = [{
+            "name": "SERVICE_NAME",
+            "value": self.get_headless_service_name(),
+        }, {
+            "name": "REPLICAS",
+            "value": " ".join([("redis-cluster-%s-%d" % (self.get_target_name(), j)) for j in range(0, replicas)])
+        }]
+        container_spec["volumeMounts"] = [{
+            "name": "config",
+            "mountPath": "/etc/redis",
+            "readOnly": True
+        }]
+
+        spec = {
+            "selector": {
+                "matchLabels": self.labels,
+            },
+            "serviceName": self.get_headless_service_name(),
+            "replicas": replicas,
+            "podManagementPolicy": "Parallel",
+            "template": {
+                "metadata": {
+                    "labels": self.labels
+                },
+                "spec": pod_spec,
+            }
+        }
+
+        if storage_class:
+            spec["volumeClaimTemplates"] = [{
+                "metadata": {
+                    "name": "data",
+                },
+                "spec": {
+                    "accessModes": ["ReadWriteOnce"],
+                    "resources": {
+                        "requests": {
+                            # Double the capacity to accommodate BGSAVE and
+                            # represent in mebibytes
+                            "storage": "%dMi" % (self.get_capacity() // 524288),
+                        }
+                    },
+                    "storageClassName": storage_class,
+                }
+            }]
+        return spec
+
+
+assert "image" in [j[0] for j in Redis.get_class_properties()]
+assert "storageClass" in [j[0] for j in Redis.get_class_properties()]
+assert "secretSpec" in [j[0] for j in Redis.get_class_properties()]
+
+if __name__ == "__main__":
+    Redis.run()
 
 """
 @kopf.on.delete("redises.codemowers.io")
@@ -235,7 +363,7 @@ async def creation(name, namespace, body, **kwargs):
                 "sessionAffinity": "ClientIP",
                 "type": "ClusterIP",
                 "ports": [{
-                    "port": REDIS_PORT,
+                    "port": 6379,
                     "name": "redis",
                 }]
             }
@@ -264,7 +392,7 @@ async def creation(name, namespace, body, **kwargs):
                 "publishNotReadyAddresses": True,
                 "ports": [{
                     "name": "redis",
-                    "port": REDIS_PORT
+                    "port": 6379
                 }]
             }
         }
@@ -290,13 +418,13 @@ async def creation(name, namespace, body, **kwargs):
             "value": "%(plaintext)s"
         }, {
             "key": "REDIS_HOST_PORT",
-            "value": "%s:%d" % (service_fqdn, REDIS_PORT),
+            "value": "%s:%d" % (service_fqdn, 6379),
         }, {
             "key": "REDIS_HOST",
             "value": service_fqdn,
         }, {
-            "key": "REDIS_PORT",
-            "value": str(REDIS_PORT),
+            "key": "6379",
+            "value": str(6379),
         }, {
             "key": "REDIS_URI",
             "value": "redis://:%%(plaintext)s@%s" % service_fqdn,

@@ -7,19 +7,70 @@ import os
 from base64 import b64decode
 from kubernetes_asyncio.client.exceptions import ApiException
 from kubernetes_asyncio import client, config
-from .lib import Secret, make_selector, make_resolver
-from .lib2 import ShareableMixin, PersistentMixin, CustomResourceMixin, RoutedMixin, CapacityMixin, ClassedOperator
+from lib2 import ShareableMixin, PersistentMixin, CustomResourceMixin, RoutedMixin, CapacityMixin, ClassedOperator
 
 class MysqlDatabase(ShareableMixin, PersistentMixin, CustomResourceMixin, RoutedMixin, CapacityMixin, ClassedOperator):
+    """
+    MySQL operator implementation
+    """
     GROUP = "codemowers.io"
     VERSION = "v1alpha1"
     SINGULAR = "MysqlDatabase"
     PLURAL = "MysqlDatabases"
 
+    def generate_custom_resource(self):
+        return {
+            "apiVersion": "mysql.oracle.com/v2",
+            "kind": "InnoDBCluster",
+            "metadata": {
+                "namespace": self.get_target_namespace(),
+                "name": self.get_target_name(),
+            },
+            "spec": {
+                "tlsUseSelfSigned": True,
+                #"secretName": sec.name,
+                "instances": self.class_spec["replicas"],
+                "router": {
+                    "instances": self.class_spec["routers"],
+                    "podSpec": {
+                        "affinity": {
+                            "podAntiAffinity": {
+                                "requiredDuringSchedulingIgnoredDuringExecution": [{
+                                    "labelSelector": self.label_selector,
+                                    "topologyKey": self.class_spec.get("topologyKey", "topology.kubernetes.io/zone")
+                                }]
+                            }
+                        },
+                    }
+                },
+                "datadirVolumeClaimTemplate": {
+                    "storageClassName": self.class_spec.get("storageClass"),
+                    "accessModes": ["ReadWriteOnce"],
+                    "resources": {
+                        "requests": {
+                            "storage": self.get_capacity(),
+                        }
+                    }
+                },
+                "podSpec": {
+                    **self.class_spec.get("podSpec", {}),
+                    "affinity": {
+                        "podAntiAffinity": {
+                            "requiredDuringSchedulingIgnoredDuringExecution": [{
+                                "labelSelector": self.label_selector,
+                                "topologyKey": self.class_spec.get("topologyKey", "topology.kubernetes.io/zone")
+                            }]
+                        }
+                    },
+                }
+            }
+        }
 
-resolve_instance = make_resolver("clustermysqldatabaseclasses", "v1alpha1", "mysql-cluster-%s")
+if __name__ == "__main__":
+    MysqlDatabase.run()
 
 
+"""
 @kopf.on.create("mysqldatabases.codemowers.io")
 async def creation(name, namespace, body, **kwargs):
     target_namespace, instance, owner, api_client, api_instance, class_spec = await resolve_instance(
@@ -69,7 +120,7 @@ async def creation(name, namespace, body, **kwargs):
                 "namespace": target_namespace,
                 "name": instance,
             },
-            "spec": {
+2            "spec": {
                 "tlsUseSelfSigned": True,
                 "secretName": sec.name,
                 "instances": replicas,
@@ -240,3 +291,4 @@ async def configure(settings: kopf.OperatorSettings, **_):
     logging.info("mysql-operator starting up")
 
 #asyncio.run(kopf.operator(clusterwide=True))
+"""
