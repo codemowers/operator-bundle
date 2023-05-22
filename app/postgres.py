@@ -8,13 +8,13 @@ import psycopg2
 from base64 import b64decode
 from kubernetes_asyncio.client.exceptions import ApiException
 from kubernetes_asyncio import client, config
-from lib2 import ShareableMixin, PersistentMixin, CustomResourceMixin, RoutedMixin, CapacityMixin, ClassedOperator
+from lib2 import ShareableMixin, PersistentMixin, CustomResourceMixin, RoutedMixin, CapacityMixin, ClaimMixin, ClassedOperator
 
-class PostgresDatabase(ShareableMixin, PersistentMixin, CustomResourceMixin, RoutedMixin, CapacityMixin, ClassedOperator):
+class PostgresDatabase(ShareableMixin, PersistentMixin, CustomResourceMixin, RoutedMixin, CapacityMixin, ClaimMixin, ClassedOperator):
     """
     Postgres database operator implementation using CloudNativePG
     """
-    
+    OPERATOR = "codemowers.io/postres-database-operator"
     GROUP = "codemowers.io"
     VERSION = "v1alpha1"
     SINGULAR = "PostgresDatabase"

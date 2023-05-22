@@ -7,12 +7,13 @@ import os
 from base64 import b64decode
 from kubernetes_asyncio.client.exceptions import ApiException
 from kubernetes_asyncio import client, config
-from lib2 import ShareableMixin, PersistentMixin, CustomResourceMixin, RoutedMixin, CapacityMixin, ClassedOperator
+from lib2 import ShareableMixin, PersistentMixin, CustomResourceMixin, RoutedMixin, CapacityMixin, ClaimMixin, ClassedOperator
 
-class MysqlDatabase(ShareableMixin, PersistentMixin, CustomResourceMixin, RoutedMixin, CapacityMixin, ClassedOperator):
+class MysqlDatabase(ShareableMixin, PersistentMixin, CustomResourceMixin, RoutedMixin, CapacityMixin, ClaimMixin, ClassedOperator):
     """
     MySQL operator implementation
     """
+    OPERATOR = "codemowers.io/mysql-database-operator"
     GROUP = "codemowers.io"
     VERSION = "v1alpha1"
     SINGULAR = "MysqlDatabase"

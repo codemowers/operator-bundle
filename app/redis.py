@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-from lib2 import PersistentMixin, StatefulSetMixin, CapacityMixin, HeadlessMixin, ClassedOperator
+from lib2 import PersistentMixin, StatefulSetMixin, CapacityMixin, HeadlessMixin, ClaimMixin, ClassedOperator
 
 
-class Redis(PersistentMixin, StatefulSetMixin, CapacityMixin, HeadlessMixin, ClassedOperator):
+class Redis(PersistentMixin, StatefulSetMixin, CapacityMixin, HeadlessMixin, ClaimMixin, ClassedOperator):
     """
     Redis operator implementation
     """
-
+    OPERATOR = "codemowers.io/redis-operator"
     GROUP = "codemowers.io"
     VERSION = "v1alpha1"
     SINGULAR = "Redis"

@@ -1,17 +1,21 @@
 #!/usr/bin/env python3
 
-from lib2 import IngressMixin, ShareableMixin, PersistentMixin, StatefulSetMixin, CapacityMixin, HeadlessMixin, ServiceMixin, ClassedOperator
+from copy import deepcopy
+from lib2 import IngressMixin, ShareableMixin, PersistentMixin, StatefulSetMixin, CapacityMixin, HeadlessMixin, ServiceMixin, ClaimMixin, ClassedOperator
 
 
-class Minio(IngressMixin, ShareableMixin, PersistentMixin, StatefulSetMixin, CapacityMixin, HeadlessMixin, ServiceMixin, ClassedOperator):
+class Minio(IngressMixin, ShareableMixin, PersistentMixin, StatefulSetMixin, CapacityMixin, HeadlessMixin, ServiceMixin, ClaimMixin, ClassedOperator):
     """
     Minio operator implementation
     """
-
+    OPERATOR = "codemowers.io/minio-bucket-operator"
     GROUP = "codemowers.io"
     VERSION = "v1alpha1"
     SINGULAR = "Bucket"
     PLURAL = "Buckets"
+
+    def get_service_name(self):
+        return "minio-cluster-%s" % self.get_target_name()
 
     def generate_headless_service(self):
         """
@@ -32,7 +36,7 @@ class Minio(IngressMixin, ShareableMixin, PersistentMixin, StatefulSetMixin, Cap
         Generate Kubernetes Service specification
         """
         return {
-            "selector": labels,
+            "selector": self.labels,
             "sessionAffinity": "ClientIP",
             "type": "ClusterIP",
             "ports": [{
@@ -46,9 +50,9 @@ class Minio(IngressMixin, ShareableMixin, PersistentMixin, StatefulSetMixin, Cap
         """
         Generate Kubernetes StatefulSet specification
         """
-        service_name = self.get_target_name()
-        replicas = self.class_spec["replicas"]
-        pod_spec = self.class_spec["podSpec"]
+
+
+        pod_spec = deepcopy(self.class_spec["podSpec"])
         pod_spec["affinity"] = {
             "podAntiAffinity": {
                 "requiredDuringSchedulingIgnoredDuringExecution": [{
@@ -58,9 +62,8 @@ class Minio(IngressMixin, ShareableMixin, PersistentMixin, StatefulSetMixin, Cap
             }
         }
 
-        container_spec = pod_spec["containers"][0]
-        container_spec["args"].append("http://%s-{0...%d}.%s.%s.svc.cluster.local/data" % (
-            service_name, replicas - 1, self.get_headless_service_name(), self.get_target_namespace()))
+        pod_spec["containers"][0]["args"].append("http://%s-{0...%d}.%s.%s.svc.cluster.local/data" % (
+            self.get_service_name(), self.class_spec["replicas"] - 1, self.get_headless_service_name(), self.get_target_namespace()))
         #container_spec["envFrom"] = [{
         #    "secretRef": {
         #        "name": sec.name
@@ -72,7 +75,7 @@ class Minio(IngressMixin, ShareableMixin, PersistentMixin, StatefulSetMixin, Cap
                 "matchLabels": self.labels,
             },
             "serviceName": self.get_headless_service_name(),
-            "replicas": replicas,
+            "replicas": self.class_spec["replicas"],
             "podManagementPolicy": "Parallel",
             "template": {
                 "metadata": {

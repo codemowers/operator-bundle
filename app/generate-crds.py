@@ -13,3 +13,7 @@ for cls in (Secret, Redis, Minio, MysqlDatabase, PostgresDatabase):
         if issubclass(cls, ClassedOperator):
             fh.write("---\n")
             fh.write(as_document(cls.generate_class_definition()).as_yaml())
+
+        if hasattr(cls, "generate_claim_definition"):
+            fh.write("---\n")
+            fh.write(as_document(cls.generate_claim_definition()).as_yaml())
